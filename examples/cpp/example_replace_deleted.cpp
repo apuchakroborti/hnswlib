@@ -45,6 +45,9 @@ int main() {
     for (int i = 0; i < num_deleted; i++) {
         hnswlib::labeltype label = max_elements + i;
         alg_hnsw->addPoint(add_data + i * dim, label, true);
+
+        std::cout <<"Data: " <<  (add_data + i * dim) << std::endl; 
+        std::cout <<"Label: " <<  label << std::endl;
     }
 
     delete[] data;

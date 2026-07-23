@@ -179,6 +179,10 @@ class Index {
         num_threads_default = std::thread::hardware_concurrency();
 
         default_ef = 10;
+        std::cout<< "Inside Index constructor: " <<std::endl;
+        std::cout<< "space_name: " << space_name <<std::endl;
+        std::cout<< "dim: " << dim <<std::endl;
+        std::cout<< "num_threads_default: " << num_threads_default <<std::endl;
     }
 
 
@@ -204,6 +208,12 @@ class Index {
         ep_added = false;
         appr_alg->ef_ = default_ef;
         seed = random_seed;
+
+        std::cout<< "Inside init_new_index: " <<std::endl;
+        std::cout<< "maxElements: " << maxElements <<std::endl;
+        std::cout<< "M: " << M <<std::endl;
+        std::cout<< "efConstruction: " << efConstruction <<std::endl;
+        std::cout<< "random_seed: " << random_seed <<std::endl;
     }
 
 

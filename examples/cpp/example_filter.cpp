@@ -48,6 +48,11 @@ int main() {
         std::vector<std::pair<float, hnswlib::labeltype>> result = alg_hnsw->searchKnnCloserFirst(data + i * dim, k, &pickIdsDivisibleByTwo);
         for (auto item: result) {
             if (item.second % 2 == 1) std::cout << "Error: found odd label\n";
+            else{
+                std::cout <<"First: " << item.first << std::endl;
+                std::cout <<"Second: " << item.second << std::endl;
+            }
+                
         }
     }
 

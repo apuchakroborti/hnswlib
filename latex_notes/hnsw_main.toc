@@ -1,0 +1,42 @@
+\contentsline {section}{\numberline {1}Where the Main Implementation Lives}{3}{section.1}%
+\contentsline {section}{\numberline {2}CPU or GPU}{3}{section.2}%
+\contentsline {section}{\numberline {3}Public Construction and Query Parameters}{3}{section.3}%
+\contentsline {section}{\numberline {4}Distance Spaces and Input Vector Format}{4}{section.4}%
+\contentsline {section}{\numberline {5}Internal Node Identifiers and Labels}{4}{section.5}%
+\contentsline {section}{\numberline {6}Level Assignment and Entry Point}{5}{section.6}%
+\contentsline {section}{\numberline {7}Memory Layout of Node Data}{5}{section.7}%
+\contentsline {section}{\numberline {8}How Link Lists Are Stored}{6}{section.8}%
+\contentsline {section}{\numberline {9}Graph Construction Path}{6}{section.9}%
+\contentsline {section}{\numberline {10}Neighbor Selection and Reciprocal Updates}{7}{section.10}%
+\contentsline {section}{\numberline {11}Detailed Control Flow of addPoint}{7}{section.11}%
+\contentsline {subsection}{\numberline {11.1}Clarifications About Nodes, Layers, Edges, Memory Access, and Deletion}{8}{subsection.11.1}%
+\contentsline {subsection}{\numberline {11.2}Public Wrapper: Replacement Policy}{9}{subsection.11.2}%
+\contentsline {subsection}{\numberline {11.3}Replacement Path for Deleted Elements}{9}{subsection.11.3}%
+\contentsline {subsection}{\numberline {11.4}Internal Overload: New Insert or Existing-Label Update}{10}{subsection.11.4}%
+\contentsline {subsection}{\numberline {11.5}Level Selection and Locking}{11}{subsection.11.5}%
+\contentsline {subsection}{\numberline {11.6}Writing the Node's Stored Data}{11}{subsection.11.6}%
+\contentsline {subsection}{\numberline {11.7}First-Node Case}{12}{subsection.11.7}%
+\contentsline {subsection}{\numberline {11.8}Greedy Descent from Upper Layers}{12}{subsection.11.8}%
+\contentsline {subsection}{\numberline {11.9}Construction Search and Mutual Connection}{13}{subsection.11.9}%
+\contentsline {subsection}{\numberline {11.10}Entry Point Update}{13}{subsection.11.10}%
+\contentsline {subsection}{\numberline {11.11}Clarification: Difference Between addPoint and updatePoint}{13}{subsection.11.11}%
+\contentsline {subsection}{\numberline {11.12}Short Logical Summary}{14}{subsection.11.12}%
+\contentsline {section}{\numberline {12}Query Path}{15}{section.12}%
+\contentsline {section}{\numberline {13}Original Data Handling}{15}{section.13}%
+\contentsline {section}{\numberline {14}Index Save File and Load File Format}{16}{section.14}%
+\contentsline {section}{\numberline {15}Deletion and Replacement}{17}{section.15}%
+\contentsline {section}{\numberline {16}Locking Mechanism During Construction and Deletion}{17}{section.16}%
+\contentsline {subsection}{\numberline {16.1}Why Locks Are Required During HNSW Graph Construction}{17}{subsection.16.1}%
+\contentsline {subsection}{\numberline {16.2}Meaning of lock\_deleted\_elements}{18}{subsection.16.2}%
+\contentsline {subsection}{\numberline {16.3}When a Node Is Marked Deleted}{18}{subsection.16.3}%
+\contentsline {subsection}{\numberline {16.4}When a Node Is Unmarked Deleted}{19}{subsection.16.4}%
+\contentsline {subsection}{\numberline {16.5}Relationship Between Deletion, Un-Deletion, and Replacement}{19}{subsection.16.5}%
+\contentsline {section}{\numberline {17}Threading and Locks}{20}{section.17}%
+\contentsline {section}{\numberline {18}Mechanism of the C++ Examples}{20}{section.18}%
+\contentsline {subsection}{\numberline {18.1}Basic Search: example\_search.cpp}{20}{subsection.18.1}%
+\contentsline {subsection}{\numberline {18.2}Filtered Search: example\_filter.cpp}{21}{subsection.18.2}%
+\contentsline {subsection}{\numberline {18.3}Multithreaded Search: example\_mt\_search.cpp}{21}{subsection.18.3}%
+\contentsline {subsection}{\numberline {18.4}Multithreaded Filtered Search: example\_mt\_filter.cpp}{22}{subsection.18.4}%
+\contentsline {subsection}{\numberline {18.5}Epsilon Search: example\_epsilon\_search.cpp}{22}{subsection.18.5}%
+\contentsline {subsection}{\numberline {18.6}Multivector Search: example\_multivector\_search.cpp}{23}{subsection.18.6}%
+\contentsline {section}{\numberline {19}Summary}{24}{section.19}%

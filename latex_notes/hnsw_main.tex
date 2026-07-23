@@ -1,0 +1,1492 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{listings}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  columns=fullflexible
+}
+
+\title{Code Notes on the HNSW Implementation in this Repository}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Where the Main Implementation Lives}
+
+The HNSW implementation in this checkout is mostly header-only C++.
+The central class is
+\lstinline|hnswlib::HierarchicalNSW<dist_t>| in
+\lstinline|hnswlib/hnswalg.h|.  The general interfaces, distance-function
+types, binary read/write helpers, and public algorithm interface are in
+\lstinline|hnswlib/hnswlib.h|.  The distance spaces are implemented in
+\lstinline|hnswlib/space_l2.h| and \lstinline|hnswlib/space_ip.h|.  The
+Python API is a pybind11 wrapper in \lstinline|python_bindings/bindings.cpp|.
+
+There is also a separate brute-force baseline in
+\lstinline|hnswlib/bruteforce.h|, exposed to Python as
+\lstinline|hnswlib.BFIndex|.  That file is useful for comparison, but it is
+not the HNSW graph implementation.
+
+\section{CPU or GPU}
+
+This implementation is CPU based.  The HNSW construction and query code uses
+ordinary C++ memory allocation, pointer arithmetic, mutexes, priority queues,
+and CPU distance functions.  No CUDA kernels, GPU memory allocations, or GPU
+launch paths are present in the HNSW code.
+
+The code does contain CPU SIMD optimizations.  In \lstinline|hnswlib.h|,
+compile-time macros enable \lstinline|USE_SSE|, \lstinline|USE_AVX|, and
+\lstinline|USE_AVX512| when the compiler and target CPU support them.  The L2
+and inner-product distance spaces then select vectorized CPU functions, for
+example \lstinline|L2SqrSIMD16ExtAVX| or
+\lstinline|InnerProductDistanceSIMD16ExtAVX512|.  The graph traversal also
+uses CPU prefetch intrinsics such as \lstinline|_mm_prefetch| under
+\lstinline|USE_SSE|.  These are CPU cache/SIMD optimizations, not GPU
+execution.
+
+\section{Public Construction and Query Parameters}
+
+The Python binding exposes the HNSW parameters through
+\lstinline|Index.init_index|:
+
+\begin{lstlisting}
+init_index(max_elements, M=16, ef_construction=200,
+           random_seed=100, allow_replace_deleted=False)
+\end{lstlisting}
+
+The same defaults appear in the C++ constructor of
+\lstinline|HierarchicalNSW|:
+
+\begin{lstlisting}
+HierarchicalNSW(SpaceInterface<dist_t> *s,
+                size_t max_elements,
+                size_t M = 16,
+                size_t ef_construction = 200,
+                size_t random_seed = 100,
+                bool allow_replace_deleted = false)
+\end{lstlisting}
+
+The important fields are:
+
+\begin{itemize}[leftmargin=*]
+  \item \lstinline|max_elements_|: fixed capacity of the index allocation.
+  The index can be resized later with \lstinline|resizeIndex|.
+  \item \lstinline|cur_element_count|: current number of internal elements.
+  Internal node ids are dense integers from 0 to
+  \lstinline|cur_element_count - 1|.
+  \item \lstinline|M_|: user requested graph degree parameter.  If
+  \lstinline|M > 10000| it is capped to 10000.
+  \item \lstinline|maxM_|: maximum number of neighbors per node on upper
+  layers.  It is set to \lstinline|M_|.
+  \item \lstinline|maxM0_|: maximum number of neighbors per node on layer 0.
+  It is set to \lstinline|2 * M_|.
+  \item \lstinline|ef_construction_|: candidate-list width during insertion.
+  The constructor stores \lstinline|max(ef_construction, M_)|, so construction
+  search is never narrower than \lstinline|M_|.
+  \item \lstinline|ef_|: query-time search width.  It defaults to 10 and can
+  be changed from Python with \lstinline|set_ef| or the writable
+  \lstinline|ef| property.
+  \item \lstinline|random_seed|: seeds the level generator and the update
+  probability generator.
+  \item \lstinline|allow_replace_deleted_|: enables reusing slots that were
+  marked deleted.
+\end{itemize}
+
+The search call exposes:
+
+\begin{lstlisting}
+knn_query(data, k=1, num_threads=-1, filter=None)
+\end{lstlisting}
+
+The actual base-layer search width is \lstinline|max(ef_, k)|.  Thus
+\lstinline|ef| should be at least \lstinline|k|, and larger values usually
+improve recall at the cost of more distance computations.
+
+\section{Distance Spaces and Input Vector Format}
+
+The public Python constructor is:
+
+\begin{lstlisting}
+hnswlib.Index(space, dim)
+\end{lstlisting}
+
+The supported HNSW spaces are:
+
+\begin{itemize}[leftmargin=*]
+  \item \lstinline|l2|: squared Euclidean distance, implemented by
+  \lstinline|L2Space| in \lstinline|space_l2.h|.
+  \item \lstinline|ip|: inner-product distance
+  \lstinline|1.0 - dot(a,b)|, implemented by \lstinline|InnerProductSpace| in
+  \lstinline|space_ip.h|.
+  \item \lstinline|cosine|: uses the inner-product space internally, but the
+  Python binding normalizes vectors before insertion and query.
+\end{itemize}
+
+The HNSW class stores a generic distance-function pointer:
+
+\begin{lstlisting}
+DISTFUNC<dist_t> fstdistfunc_;
+void *dist_func_param_;
+size_t data_size_;
+\end{lstlisting}
+
+For the normal Python bindings, \lstinline|dist_t| is \lstinline|float| and
+the stored vectors are contiguous \lstinline|float32| vectors of length
+\lstinline|dim|.  The binding converts input arrays with
+\lstinline|py::array_t<dist_t, py::array::c_style | py::array::forcecast>|,
+checks the dimensionality, optionally normalizes cosine vectors, and passes a
+row pointer into \lstinline|HierarchicalNSW::addPoint|.
+
+After insertion, the index owns its own copy of the vector bytes.  It does not
+keep a reference to the original NumPy array or original input buffer.
+
+\section{Internal Node Identifiers and Labels}
+
+The implementation separates external labels from internal node ids.
+
+\begin{itemize}[leftmargin=*]
+  \item External labels have type \lstinline|labeltype|, defined as
+  \lstinline|size_t| in \lstinline|hnswlib.h|.
+  \item Internal ids have type \lstinline|tableint|, defined as
+  \lstinline|unsigned int| in \lstinline|hnswalg.h|.
+  \item \lstinline|label_lookup_| maps external labels to internal ids.
+  \item \lstinline|getExternalLabel(internal_id)| reads the stored external
+  label from the node's memory block.
+\end{itemize}
+
+If the Python user does not provide ids in \lstinline|add_items|, the binding
+uses sequential labels.  If the user provides ids, those become the external
+labels.  Search returns labels, not internal ids.
+
+\section{Level Assignment and Entry Point}
+
+Each node receives a random maximum layer from:
+
+\begin{lstlisting}
+int getRandomLevel(double reverse_size) {
+    double r = -log(U(0,1)) * reverse_size;
+    return (int) r;
+}
+\end{lstlisting}
+
+The constructor sets:
+
+\begin{lstlisting}
+mult_ = 1 / log(1.0 * M_);
+revSize_ = 1.0 / mult_;
+\end{lstlisting}
+
+The sampled level is stored in \lstinline|element_levels_[internal_id]|.
+The index also keeps:
+
+\begin{itemize}[leftmargin=*]
+  \item \lstinline|maxlevel_|: highest level currently present in the graph.
+  \item \lstinline|enterpoint_node_|: internal id used as the starting point
+  for top-down graph traversal.
+\end{itemize}
+
+The first inserted node becomes the entry point.  If a later inserted node has
+a higher level than the previous maximum, it becomes the new entry point and
+\lstinline|maxlevel_| is updated.
+
+\section{Memory Layout of Node Data}
+
+The most important storage decision is that layer 0 links, vector data, and
+external label are stored together in one large contiguous allocation:
+
+\begin{lstlisting}
+char *data_level0_memory_;
+\end{lstlisting}
+
+For each node, the byte layout is:
+
+\begin{lstlisting}
+[ level-0 link list ][ raw vector bytes ][ external label ]
+\end{lstlisting}
+
+The constructor computes:
+
+\begin{lstlisting}
+size_links_level0_ = maxM0_ * sizeof(tableint)
+                   + sizeof(linklistsizeint);
+size_data_per_element_ = size_links_level0_
+                       + data_size_
+                       + sizeof(labeltype);
+offsetLevel0_ = 0;
+offsetData_ = size_links_level0_;
+label_offset_ = size_links_level0_ + data_size_;
+\end{lstlisting}
+
+Therefore:
+
+\begin{itemize}[leftmargin=*]
+  \item \lstinline|get_linklist0(id)| returns the beginning of the layer-0
+  neighbor list for node \lstinline|id|.
+  \item \lstinline|getDataByInternalId(id)| returns the raw vector bytes for
+  node \lstinline|id|.
+  \item \lstinline|getExternalLabeLp(id)| returns the label address for node
+  \lstinline|id|.
+\end{itemize}
+
+Upper-layer links are stored separately:
+
+\begin{lstlisting}
+char **linkLists_;
+size_links_per_element_ = maxM_ * sizeof(tableint)
+                        + sizeof(linklistsizeint);
+\end{lstlisting}
+
+For a node with level greater than zero,
+\lstinline|linkLists_[id]| points to a block containing that node's link lists
+for levels 1 through \lstinline|element_levels_[id]|.  The helper
+\lstinline|get_linklist(id, level)| indexes into this block with:
+
+\begin{lstlisting}
+linkLists_[id] + (level - 1) * size_links_per_element_
+\end{lstlisting}
+
+\section{How Link Lists Are Stored}
+
+Each link list starts with a small count field, followed by an array of
+neighbor internal ids:
+
+\begin{lstlisting}
+[ link-list count ][ neighbor id 0 ][ neighbor id 1 ] ...
+\end{lstlisting}
+
+The neighbor ids are \lstinline|tableint| values.  The count is manipulated
+through:
+
+\begin{lstlisting}
+getListCount(linklistsizeint *ptr)
+setListCount(linklistsizeint *ptr, unsigned short int size)
+\end{lstlisting}
+
+Layer 0 can hold up to \lstinline|maxM0_ = 2M| neighbors per node.  Upper
+layers can hold up to \lstinline|maxM_ = M| neighbors per node.
+
+The graph is therefore an adjacency-list graph, but it is stored in compact
+manual memory blocks rather than in \lstinline|std::vector<std::vector<int>>|.
+During traversal, the code obtains a pointer to the link list, reads the
+count, and then scans the neighbor id array.
+
+\section{Graph Construction Path}
+
+Insertion starts in
+\lstinline|HierarchicalNSW::addPoint(data_point, label, level)|.
+
+The insertion path is:
+
+\begin{enumerate}[leftmargin=*]
+  \item Check whether the label already exists in \lstinline|label_lookup_|.
+  If it exists, the node is updated instead of creating a duplicate.
+  \item Assign a new dense internal id from \lstinline|cur_element_count|.
+  \item Sample the node level with \lstinline|getRandomLevel(mult_)| unless a
+  positive level is explicitly supplied.
+  \item Zero the node's level-0 memory block.
+  \item Copy the external label into the label region.
+  \item Copy the input vector bytes into the data region.
+  \item Allocate upper-level link memory if the sampled level is greater than
+  zero.
+  \item From the current entry point, greedily descend upper levels until the
+  insertion level is reached.
+  \item For each level from \lstinline|min(curlevel, maxlevelcopy)| down to
+  zero, run \lstinline|searchBaseLayer| with \lstinline|ef_construction_|
+  width to collect candidate neighbors.
+  \item Use \lstinline|mutuallyConnectNewElement| to select neighbors, write
+  the new node's outgoing links, and update reciprocal links in neighboring
+  nodes.
+\end{enumerate}
+
+The construction search uses two priority queues.  One queue stores candidates
+to explore, and another stores the best candidates found so far.  The visited
+state is kept in a reusable \lstinline|VisitedList| from
+\lstinline|visited_list_pool_|.
+
+\section{Neighbor Selection and Reciprocal Updates}
+
+The code does not simply connect to the nearest \lstinline|M| candidates.
+It applies the HNSW neighbor diversification heuristic in
+\lstinline|getNeighborsByHeuristic2|.  Candidates are considered from nearest
+to farthest.  A candidate is kept only if it is not closer to an already
+selected neighbor than it is to the query/new point.  This tends to preserve
+angular or spatial diversity in the graph.
+
+\lstinline|mutuallyConnectNewElement| then:
+
+\begin{itemize}[leftmargin=*]
+  \item Writes the selected neighbors into the new node's link list at that
+  level.
+  \item For every selected neighbor, locks that neighbor's link list and tries
+  to add the new node as a reciprocal connection.
+  \item If the neighbor has free capacity, it appends the new node.
+  \item If the neighbor is full, it builds a candidate set containing the old
+  neighbors plus the new node, applies the same heuristic, and rewrites the
+  neighbor list.
+\end{itemize}
+
+This means the graph is maintained as approximately bidirectional, but a full
+neighbor list can be pruned and rewritten when a new reciprocal edge is better
+according to the heuristic.
+
+\section{Detailed Control Flow of addPoint}
+
+The public insertion method is:
+
+\begin{lstlisting}
+void addPoint(const void *data_point,
+              labeltype label,
+              bool replace_deleted = false)
+\end{lstlisting}
+
+This is the method called by the examples through statements such as:
+
+\begin{lstlisting}
+alg_hnsw->addPoint(data + i * dim, i);
+\end{lstlisting}
+
+The pointer \lstinline|data_point| is a generic pointer to the vector bytes
+that should be inserted.  It is declared as \lstinline|const void *| because
+the HNSW class does not need to know whether the vector came from a
+\lstinline|float*|, \lstinline|char*|, or another caller-owned byte buffer.
+The distance space supplies \lstinline|data_size_| and the distance function,
+so \lstinline|addPoint| can copy exactly the required number of bytes into the
+index.
+
+\subsection{Clarifications About Nodes, Layers, Edges, Memory Access, and Deletion}
+
+\textbf{How the HNSW node data is stored.}
+Each inserted multidimensional vector becomes one HNSW node.  In the
+examples, one row of the original data matrix corresponds to one node.  For
+example:
+
+\begin{lstlisting}
+alg_hnsw->addPoint(data + i * dim, i);
+\end{lstlisting}
+
+Here \lstinline|data + i * dim| is the caller's pointer to row \lstinline|i|.
+The HNSW node does not keep this original pointer as the permanent node
+pointer.  Instead, \lstinline|addPoint| copies the vector bytes into
+HNSW-owned memory:
+
+\begin{lstlisting}
+memcpy(getDataByInternalId(cur_c), data_point, data_size_);
+\end{lstlisting}
+
+Therefore, after insertion, the node's vector lives inside
+\lstinline|data_level0_memory_|.  The original array used by the example is
+only the input source.  The index can still search after the caller's original
+array is gone, as long as the index itself has not been destroyed.
+
+\textbf{How one node is managed across multiple layers.}
+One node can appear in multiple HNSW layers, but the vector data is not
+duplicated once per layer.  The node has exactly one internal id
+\lstinline|cur_c| and one stored vector.  The layer membership is stored in:
+
+\begin{lstlisting}
+element_levels_[cur_c] = curlevel;
+\end{lstlisting}
+
+Every node exists at layer 0.  If \lstinline|curlevel = 3|, then that same
+node id participates in layers 0, 1, 2, and 3.  What changes from layer to
+layer is the node's neighbor list.  Layer 0 neighbors are stored inside the
+node's main record in \lstinline|data_level0_memory_|.  Upper-layer neighbors
+are stored in \lstinline|linkLists_[cur_c]|:
+
+\begin{lstlisting}
+get_linklist0(cur_c)       // layer 0 links
+get_linklist(cur_c, level) // links for level >= 1
+\end{lstlisting}
+
+So the implementation does not create separate vector objects for the same
+node in different layers.  It creates separate adjacency lists for the same
+internal node id at different layers.
+
+\textbf{How neighbors and connections are stored.}
+Neighbors are stored as adjacency lists of internal node ids, not as
+linked-list objects and not as explicit edge pairs like \lstinline|(1, 3)|.
+Each link list has this memory format:
+
+\begin{lstlisting}
+[ neighbor_count ][ neighbor_id_0 ][ neighbor_id_1 ] ...
+\end{lstlisting}
+
+For example, if internal node 1 is connected to nodes 3, 8, and 10 on layer 0,
+then node 1's layer-0 link list stores a count of 3 followed by the internal
+ids 3, 8, and 10.  There is no separate edge object.  The reciprocal edge is
+represented by also placing 1 into the neighbor list of node 3, 8, or 10 when
+\lstinline|mutuallyConnectNewElement| updates the graph.
+
+\textbf{How neighbor vectors are accessed during insertion and search.}
+Neighbor exploration is pointer-based random access in memory.  During
+construction or search, the graph traversal reads a neighbor id from the
+current node's adjacency list, then uses that id to compute the address of the
+neighbor's stored vector:
+
+\begin{lstlisting}
+candidate_id = datal[j];
+char *candidate_vector = getDataByInternalId(candidate_id);
+dist = fstdistfunc_(query_or_new_vector,
+                    candidate_vector,
+                    dist_func_param_);
+\end{lstlisting}
+
+\lstinline|getDataByInternalId(candidate_id)| performs address arithmetic:
+
+\begin{lstlisting}
+data_level0_memory_
+    + candidate_id * size_data_per_element_
+    + offsetData_
+\end{lstlisting}
+
+Thus vectors are stored in one large contiguous memory block, but the visited
+neighbors are usually not visited in contiguous id order.  The access pattern
+is graph-driven random access into \lstinline|data_level0_memory_|.  It does
+not load vectors from a file during normal insertion or search.  Files are only
+used by \lstinline|saveIndex| and \lstinline|loadIndex| for persistence.
+
+\textbf{Why node deletion is needed.}
+Deletion is needed because real indexes often need to remove or
+replace items after construction.  Physically removing a node from an HNSW
+graph is expensive because many other nodes may have that internal id in their
+neighbor lists across multiple layers.  This implementation therefore uses
+lazy deletion:
+
+\begin{lstlisting}
+markDelete(label)
+\end{lstlisting}
+
+sets a delete bit in the node's level-0 link-list header.  The node remains in
+the graph so traversal can still pass through it, but search results skip it.
+If \lstinline|allow_replace_deleted_| is enabled, the deleted internal id is
+put into \lstinline|deleted_elements| and can later be reused by
+\lstinline|addPoint(..., replace_deleted = true)|.  This saves memory and
+avoids growing the index capacity when old items are replaced by new items.
+
+\subsection{Public Wrapper: Replacement Policy}
+
+The first overload has two jobs: enforce the deleted-slot replacement policy
+and then dispatch to the internal insertion/update routine.
+
+The first check is:
+
+\begin{lstlisting}
+if ((allow_replace_deleted_ == false) && (replace_deleted == true)) {
+    throw std::runtime_error("Replacement of deleted elements is disabled...");
+}
+\end{lstlisting}
+
+This prevents a caller from requesting slot reuse unless the index was
+constructed with \lstinline|allow_replace_deleted = true|.  In normal insertion
+mode, \lstinline|replace_deleted| is false, so the method simply locks the
+label and forwards to the internal overload:
+
+\begin{lstlisting}
+std::unique_lock<std::mutex> lock_label(getLabelOpMutex(label));
+if (!replace_deleted) {
+    addPoint(data_point, label, -1);
+    return;
+}
+\end{lstlisting}
+
+\lstinline|getLabelOpMutex(label)| selects one of the striped label locks.
+This prevents two threads from concurrently inserting, deleting, or replacing
+the same external label.
+
+\subsection{Replacement Path for Deleted Elements}
+
+If \lstinline|replace_deleted| is true, the method tries to reuse an internal
+id from the \lstinline|deleted_elements| set:
+
+\begin{lstlisting}
+tableint internal_id_replaced;
+std::unique_lock<std::mutex> lock_deleted_elements(deleted_elements_lock);
+bool is_vacant_place = !deleted_elements.empty();
+if (is_vacant_place) {
+    internal_id_replaced = *deleted_elements.begin();
+    deleted_elements.erase(internal_id_replaced);
+}
+lock_deleted_elements.unlock();
+\end{lstlisting}
+
+Here \lstinline|internal_id_replaced| is an internal graph node id, not the
+external user label.  The set stores nodes that were marked deleted earlier.
+The code removes one id from the set while holding
+\lstinline|deleted_elements_lock| so that another thread cannot reuse the same
+slot.
+
+If no deleted slot is available, the method falls back to normal insertion:
+
+\begin{lstlisting}
+if (!is_vacant_place) {
+    addPoint(data_point, label, -1);
+}
+\end{lstlisting}
+
+If a deleted slot is available, the node storage is reused:
+
+\begin{lstlisting}
+labeltype label_replaced = getExternalLabel(internal_id_replaced);
+setExternalLabel(internal_id_replaced, label);
+
+std::unique_lock<std::mutex> lock_table(label_lookup_lock);
+label_lookup_.erase(label_replaced);
+label_lookup_[label] = internal_id_replaced;
+lock_table.unlock();
+
+unmarkDeletedInternal(internal_id_replaced);
+updatePoint(data_point, internal_id_replaced, 1.0);
+\end{lstlisting}
+
+This does not allocate a new node id.  Instead, it changes the stored external
+label, updates the label lookup table, clears the deletion mark, and then calls
+\lstinline|updatePoint|.  \lstinline|updatePoint| copies the new vector bytes
+into the old node's data region and repairs local graph connections.
+
+\subsection{Internal Overload: New Insert or Existing-Label Update}
+
+The actual graph insertion is handled by:
+
+\begin{lstlisting}
+tableint addPoint(const void *data_point,
+                  labeltype label,
+                  int level)
+\end{lstlisting}
+
+The \lstinline|level| argument is normally \lstinline|-1|, meaning ``sample a
+random HNSW level.''  Tests or special callers can pass a positive level to
+force a node level.
+
+The method first locks \lstinline|label_lookup_lock| and checks whether the
+external label already exists:
+
+\begin{lstlisting}
+auto search = label_lookup_.find(label);
+if (search != label_lookup_.end()) {
+    tableint existingInternalId = search->second;
+    ...
+    updatePoint(data_point, existingInternalId, 1.0);
+    return existingInternalId;
+}
+\end{lstlisting}
+
+If the label already exists, no duplicate node is created.  The existing node's
+vector is updated.  If replacement of deleted elements is enabled, the method
+refuses to update an already-deleted node through this path because deleted
+nodes may be reused by the replacement path.
+
+If the label is new, the method checks capacity:
+
+\begin{lstlisting}
+if (cur_element_count >= max_elements_) {
+    throw std::runtime_error("The number of elements exceeds the specified limit");
+}
+\end{lstlisting}
+
+Then it assigns a dense internal id:
+
+\begin{lstlisting}
+cur_c = cur_element_count;
+cur_element_count++;
+label_lookup_[label] = cur_c;
+\end{lstlisting}
+
+\lstinline|cur_c| is the internal id used inside graph adjacency lists.
+\lstinline|label| is the external id returned to users in search results.
+
+\subsection{Level Selection and Locking}
+
+After the internal id is reserved, the method locks the new node's link-list
+mutex:
+
+\begin{lstlisting}
+std::unique_lock<std::mutex> lock_el(link_list_locks_[cur_c]);
+\end{lstlisting}
+
+It then chooses the node level:
+
+\begin{lstlisting}
+int curlevel = getRandomLevel(mult_);
+if (level > 0)
+    curlevel = level;
+element_levels_[cur_c] = curlevel;
+\end{lstlisting}
+
+The sampled value controls how many upper-layer link lists this node will own.
+Every node always has level 0.  Nodes with \lstinline|curlevel > 0| also have
+link lists for levels 1 through \lstinline|curlevel|.
+
+The method then takes the global lock and snapshots the current maximum graph
+level:
+
+\begin{lstlisting}
+std::unique_lock<std::mutex> templock(global);
+int maxlevelcopy = maxlevel_;
+if (curlevel <= maxlevelcopy)
+    templock.unlock();
+\end{lstlisting}
+
+If the new node is not higher than the current maximum level, the global lock
+can be released early.  If the new node is higher, the lock is retained until
+the entry point and \lstinline|maxlevel_| are updated.
+
+\subsection{Writing the Node's Stored Data}
+
+The method snapshots the current entry point:
+
+\begin{lstlisting}
+tableint currObj = enterpoint_node_;
+tableint enterpoint_copy = enterpoint_node_;
+\end{lstlisting}
+
+Then it initializes the new node's level-0 storage:
+
+\begin{lstlisting}
+memset(data_level0_memory_ + cur_c * size_data_per_element_
+       + offsetLevel0_, 0, size_data_per_element_);
+\end{lstlisting}
+
+The pointer expression computes the start address of node
+\lstinline|cur_c|'s contiguous record in \lstinline|data_level0_memory_|.
+That record contains:
+
+\begin{lstlisting}
+[ level-0 links ][ vector bytes ][ external label ]
+\end{lstlisting}
+
+The label and vector are copied into their offsets:
+
+\begin{lstlisting}
+memcpy(getExternalLabeLp(cur_c), &label, sizeof(labeltype));
+memcpy(getDataByInternalId(cur_c), data_point, data_size_);
+\end{lstlisting}
+
+\lstinline|getExternalLabeLp(cur_c)| returns a pointer to the label field
+inside the node record.  \lstinline|getDataByInternalId(cur_c)| returns a
+pointer to the vector data field.  The source \lstinline|data_point| remains
+owned by the caller; HNSW stores its own copy.
+
+If the node has upper levels, the method allocates separate upper-layer link
+storage:
+
+\begin{lstlisting}
+if (curlevel) {
+    linkLists_[cur_c] =
+        (char *) malloc(size_links_per_element_ * curlevel + 1);
+    memset(linkLists_[cur_c], 0, size_links_per_element_ * curlevel + 1);
+}
+\end{lstlisting}
+
+\lstinline|linkLists_[cur_c]| is a pointer to a heap block containing link
+lists for levels 1 through \lstinline|curlevel|.  Level 0 is not stored here;
+it is stored in \lstinline|data_level0_memory_|.
+
+\subsection{First-Node Case}
+
+If the graph is empty, \lstinline|enterpoint_node_| was initialized to
+\lstinline|-1|.  The condition:
+
+\begin{lstlisting}
+if ((signed)currObj != -1) {
+    ...
+} else {
+    enterpoint_node_ = 0;
+    maxlevel_ = curlevel;
+}
+\end{lstlisting}
+
+therefore separates normal insertion from first-node initialization.  The first
+node has no neighbors to connect to.  It simply becomes the entry point and
+sets the maximum level.
+
+\subsection{Greedy Descent from Upper Layers}
+
+For every node after the first one, insertion starts from the current entry
+point.  If the new node's level is lower than the current maximum level, the
+method greedily descends the upper layers:
+
+\begin{lstlisting}
+for (int level = maxlevelcopy; level > curlevel; level--) {
+    while (changed) {
+        data = get_linklist(currObj, level);
+        int size = getListCount(data);
+        tableint *datal = (tableint *) (data + 1);
+        ...
+        if (d < curdist) {
+            curdist = d;
+            currObj = cand;
+            changed = true;
+        }
+    }
+}
+\end{lstlisting}
+
+The goal is to find a good entry point near the new vector before doing the
+more expensive construction search on lower layers.  \lstinline|get_linklist|
+returns the adjacency list for \lstinline|currObj| at that upper level.
+\lstinline|data + 1| skips the link-list count header, so \lstinline|datal|
+points to the neighbor id array.
+
+\subsection{Construction Search and Mutual Connection}
+
+After greedy descent, the method connects the new node from
+\lstinline|min(curlevel, maxlevelcopy)| down to level 0:
+
+\begin{lstlisting}
+for (int level = std::min(curlevel, maxlevelcopy); level >= 0; level--) {
+    auto top_candidates = searchBaseLayer(currObj, data_point, level);
+    ...
+    currObj = mutuallyConnectNewElement(data_point, cur_c,
+                                        top_candidates, level, false);
+}
+\end{lstlisting}
+
+\lstinline|searchBaseLayer| performs an \lstinline|ef_construction_|-wide
+candidate search around \lstinline|currObj| at the current layer.  The result
+is a priority queue of candidate neighbor internal ids.
+
+\lstinline|mutuallyConnectNewElement| then:
+
+\begin{itemize}[leftmargin=*]
+  \item applies the neighbor-selection heuristic,
+  \item writes the selected neighbors into the new node's link list,
+  \item inserts reciprocal links into those neighbor nodes,
+  \item prunes a neighbor's link list if it is already full, and
+  \item returns the next closest selected neighbor to use as the entry point
+  for the next lower layer.
+\end{itemize}
+
+If the original entry point was marked deleted, the code explicitly adds it to
+the candidate queue so connectivity can still be repaired through it, while
+normal search results still avoid returning deleted nodes.
+
+\subsection{Entry Point Update}
+
+At the end of insertion, if the new node's level is higher than the previous
+maximum level, it becomes the new global entry point:
+
+\begin{lstlisting}
+if (curlevel > maxlevelcopy) {
+    enterpoint_node_ = cur_c;
+    maxlevel_ = curlevel;
+}
+\end{lstlisting}
+
+Finally, the method returns \lstinline|cur_c|, the internal id assigned to the
+inserted or updated node.
+
+\subsection{Clarification: Difference Between addPoint and updatePoint}
+
+\textbf{Main purpose.}
+\lstinline|addPoint| is the public insertion entry point.  It decides whether
+the call should create a new node, update an existing label, or reuse a
+deleted node slot.  \lstinline|updatePoint| is not a general new-node
+insertion method.  It assumes an internal node id already exists and replaces
+the vector stored at that internal id.
+
+\textbf{When addPoint is called.}
+The examples and Python bindings call \lstinline|addPoint| when they want to
+put data into the index:
+
+\begin{lstlisting}
+alg_hnsw->addPoint(data + i * dim, i);
+\end{lstlisting}
+
+For a new label, \lstinline|addPoint| reserves a new dense internal id,
+samples the node level, copies the vector and external label into HNSW-owned
+memory, allocates upper-layer link storage if needed, searches for candidate
+neighbors, and connects the new node into the graph.
+
+\textbf{When updatePoint is called.}
+\lstinline|updatePoint| is called from inside \lstinline|addPoint| in two
+important cases:
+
+\begin{itemize}[leftmargin=*]
+  \item the caller inserts a label that already exists, so the existing node's
+  vector should be updated instead of creating a duplicate node;
+  \item \lstinline|replace_deleted = true| reuses an internal id from a
+  deleted node slot, so the old node storage receives a new vector and label.
+\end{itemize}
+
+In both cases, the internal id already exists before \lstinline|updatePoint|
+starts.
+
+\textbf{Memory behavior.}
+\lstinline|addPoint| may allocate and initialize new graph memory.  For a new
+node, it writes the level-0 record in \lstinline|data_level0_memory_| and may
+allocate \lstinline|linkLists_[cur_c]| for upper layers.
+\lstinline|updatePoint| does not reserve a new internal id and does not create
+a new node record.  Its first operation is:
+
+\begin{lstlisting}
+memcpy(getDataByInternalId(internalId), dataPoint, data_size_);
+\end{lstlisting}
+
+That line overwrites the vector bytes of an already-existing node.
+
+\textbf{Graph behavior.}
+\lstinline|addPoint| connects a new node by searching from the entry point and
+calling \lstinline|mutuallyConnectNewElement| layer by layer.
+\lstinline|updatePoint| repairs graph neighborhoods around an existing node.
+It gathers one-hop and two-hop candidates around the updated node, recomputes
+neighbor lists for affected neighbors using the HNSW heuristic, and then calls
+\lstinline|repairConnectionsForUpdate| to reconnect the updated point from the
+global entry point down to its own level.
+
+\textbf{Node id behavior.}
+\lstinline|addPoint| can increase \lstinline|cur_element_count| when it
+creates a new node.  \lstinline|updatePoint| never increases
+\lstinline|cur_element_count|.  It keeps the same internal id and changes the
+stored vector, and sometimes the surrounding graph links are adjusted to match
+the new vector location in the metric space.
+
+\textbf{Short comparison.}
+
+\begin{center}
+\begin{tabular}{|p{0.28\linewidth}|p{0.31\linewidth}|p{0.31\linewidth}|}
+\hline
+\textbf{Question} & \textbf{addPoint} & \textbf{updatePoint} \\
+\hline
+Creates a new internal id? & Yes, for a new label. & No. Uses an existing internal id. \\
+\hline
+Copies vector bytes? & Yes. & Yes, overwrites existing vector bytes. \\
+\hline
+Allocates upper-layer link storage? & Yes, for a new node with level greater than 0. & No new node storage allocation. \\
+\hline
+Used for duplicate labels? & Detects the duplicate and dispatches to update. & Performs the actual vector update. \\
+\hline
+Used for deleted-slot replacement? & Selects and relabels a deleted slot. & Writes new vector data and repairs graph connections. \\
+\hline
+Changes graph links? & Builds links for a newly inserted node and reciprocal neighbors. & Repairs links around an existing node after its vector changes. \\
+\hline
+\end{tabular}
+\end{center}
+
+\subsection{Short Logical Summary}
+
+The full insertion logic can be read as:
+
+\begin{enumerate}[leftmargin=*]
+  \item Validate whether deleted-slot replacement is allowed.
+  \item Lock by external label.
+  \item If replacement is requested, either reuse a deleted internal id or fall
+  back to normal insertion.
+  \item In the internal overload, update an existing label if it already
+  exists.
+  \item Otherwise reserve a new internal id and label mapping.
+  \item Sample or force the HNSW level.
+  \item Copy the external label and vector bytes into HNSW-owned memory.
+  \item Allocate upper-layer link storage if needed.
+  \item If this is the first node, make it the entry point.
+  \item Otherwise greedily descend upper layers, search candidate neighbors on
+  each insertion layer, and mutually connect the new node.
+  \item If the new node has the highest level, make it the entry point.
+\end{enumerate}
+
+\section{Query Path}
+
+Querying is implemented by \lstinline|HierarchicalNSW::searchKnn|.
+
+The query path is:
+
+\begin{enumerate}[leftmargin=*]
+  \item Start at \lstinline|enterpoint_node_|.
+  \item Compute the distance from the query to the entry point.
+  \item For levels \lstinline|maxlevel_| down to 1, greedily move to any
+  neighbor that is closer to the query.  This is a single-best path descent on
+  the sparse upper layers.
+  \item At level 0, call \lstinline|searchBaseLayerST| with
+  \lstinline|max(ef_, k)|.
+  \item Trim the candidate heap down to \lstinline|k| results.
+  \item Convert internal ids back to external labels before returning.
+\end{enumerate}
+
+The base-layer search scans adjacency lists from the candidate queue.  For
+each visited node it reads the layer-0 neighbor list, computes distances to
+unvisited neighbors, and updates the candidate queue and result heap.  If
+there are no deletions and no filter function, the implementation uses a
+\lstinline|bare_bone_search| template path to avoid deletion/filter checks.
+
+\section{Original Data Handling}
+
+The original input vectors are copied into the index at insertion time.  The
+key line is the \lstinline|memcpy| in \lstinline|addPoint|:
+
+\begin{lstlisting}
+memcpy(getDataByInternalId(cur_c), data_point, data_size_);
+\end{lstlisting}
+
+For Python:
+
+\begin{itemize}[leftmargin=*]
+  \item Input data is accepted as a C-style NumPy array and force-cast to
+  \lstinline|float|.
+  \item For \lstinline|l2| and \lstinline|ip|, the row bytes are copied
+  directly into HNSW memory.
+  \item For \lstinline|cosine|, the binding normalizes each vector first and
+  stores the normalized vector, not the original unnormalized vector.
+\end{itemize}
+
+The method \lstinline|get_items| retrieves vectors by external label through
+\lstinline|getDataByLabel|.  For cosine indexes, this returns the normalized
+stored vectors because those are the bytes kept by the HNSW structure.
+
+\section{Index Save File and Load File Format}
+
+\lstinline|saveIndex(location)| writes a binary file containing both metadata
+and graph/data memory.  The order is:
+
+\begin{enumerate}[leftmargin=*]
+  \item \lstinline|offsetLevel0_|
+  \item \lstinline|max_elements_|
+  \item \lstinline|cur_element_count|
+  \item \lstinline|size_data_per_element_|
+  \item \lstinline|label_offset_|
+  \item \lstinline|offsetData_|
+  \item \lstinline|maxlevel_|
+  \item \lstinline|enterpoint_node_|
+  \item \lstinline|maxM_|
+  \item \lstinline|maxM0_|
+  \item \lstinline|M_|
+  \item \lstinline|mult_|
+  \item \lstinline|ef_construction_|
+  \item Raw \lstinline|data_level0_memory_| for all current elements.
+  \item For each element, the size of its upper-layer link block followed by
+  that block's bytes.
+\end{enumerate}
+
+This file stores the vectors, labels, level-0 graph links, upper-layer graph
+links, entry point, levels, and construction parameters needed to reconstruct
+the index.  On load, \lstinline|loadIndex| reconstructs
+\lstinline|label_lookup_| by reading each stored external label from
+\lstinline|data_level0_memory_|.  Query-time \lstinline|ef_| is reset to 10
+when loading through the C++ \lstinline|loadIndex| path; the README notes that
+users should set \lstinline|ef| manually after loading a saved index.
+
+\section{Deletion and Replacement}
+
+Deletion is lazy.  \lstinline|markDelete(label)| maps the label to an internal
+id and sets a delete bit inside the level-0 link-list header.  It does not
+physically remove the node from the graph.  Searches skip marked nodes in
+results, but traversal may still pass through them.
+
+If \lstinline|allow_replace_deleted_| is true, deleted internal ids are stored
+in \lstinline|deleted_elements|.  A later insertion with
+\lstinline|replace_deleted=True| may reuse one of those internal ids, replace
+the stored label and vector, clear the delete bit, and call
+\lstinline|updatePoint| to repair local graph connections.
+
+\section{Locking Mechanism During Construction and Deletion}
+
+This section clarifies why locks are used while constructing the HNSW graph,
+what \lstinline|lock_deleted_elements| means, and how deletion/un-deletion
+interacts with locking.
+
+\subsection{Why Locks Are Required During HNSW Graph Construction}
+
+HNSW construction modifies shared graph state.  When a new node is inserted,
+\lstinline|addPoint| does more than copy a vector.  It also reserves an
+internal id, updates the external-label lookup table, writes the node's
+level-0 memory record, allocates upper-layer link storage, searches candidate
+neighbors, writes the new node's neighbor lists, and updates reciprocal
+neighbor lists in already-existing nodes.
+
+If two threads insert nodes at the same time, they may touch overlapping
+structures:
+
+\begin{itemize}[leftmargin=*]
+  \item \lstinline|label_lookup_| maps external labels to internal ids.
+  \item \lstinline|cur_element_count| assigns the next internal node id.
+  \item \lstinline|data_level0_memory_| stores each node's level-0 links,
+  vector bytes, and label.
+  \item \lstinline|linkLists_| stores upper-layer link lists.
+  \item \lstinline|enterpoint_node_| and \lstinline|maxlevel_| define the
+  global top-level entry point.
+  \item Existing nodes' adjacency lists may be rewritten when reciprocal edges
+  are added.
+\end{itemize}
+
+Without locks, two insertions could assign the same label mapping, update the
+same neighbor list at the same time, corrupt a link-list count, or change the
+entry point while another insertion is using it.  The implementation therefore
+uses different locks for different shared resources:
+
+\begin{itemize}[leftmargin=*]
+  \item \lstinline|getLabelOpMutex(label)| locks operations involving one
+  external label.
+  \item \lstinline|label_lookup_lock| protects the label-to-internal-id table.
+  \item \lstinline|link_list_locks_[id]| protects the adjacency lists of a
+  particular internal node.
+  \item \lstinline|global| protects global entry-point and maximum-level
+  changes.
+  \item \lstinline|deleted_elements_lock| protects the set of reusable deleted
+  node ids.
+\end{itemize}
+
+The important design idea is that the graph is not locked with one single
+large lock for every operation.  Instead, the code locks smaller pieces of
+state, such as one label, one node's link list, or the deleted-id set.  This
+allows more concurrency while still protecting memory that can be modified by
+multiple threads.
+
+\subsection{Meaning of lock\_deleted\_elements}
+
+The statement:
+
+\begin{lstlisting}
+std::unique_lock<std::mutex> lock_deleted_elements(deleted_elements_lock);
+\end{lstlisting}
+
+creates a scoped lock object named \lstinline|lock_deleted_elements|.  The
+mutex being locked is \lstinline|deleted_elements_lock|.  The protected data
+structure is:
+
+\begin{lstlisting}
+std::unordered_set<tableint> deleted_elements;
+\end{lstlisting}
+
+\lstinline|deleted_elements| stores internal node ids that were marked deleted
+and are available for possible replacement.  The lock is needed because one
+thread may mark a node deleted while another thread is trying to reuse a
+deleted slot in \lstinline|addPoint(..., replace_deleted = true)|.
+
+In the replacement path, the code checks and removes a reusable id while
+holding this lock:
+
+\begin{lstlisting}
+bool is_vacant_place = !deleted_elements.empty();
+if (is_vacant_place) {
+    internal_id_replaced = *deleted_elements.begin();
+    deleted_elements.erase(internal_id_replaced);
+}
+lock_deleted_elements.unlock();
+\end{lstlisting}
+
+This prevents two insertions from taking the same deleted internal id.  After
+one thread erases \lstinline|internal_id_replaced| from the set, no other
+thread can pick that same id as a vacant slot.
+
+\subsection{When a Node Is Marked Deleted}
+
+A node is marked deleted when the user calls:
+
+\begin{lstlisting}
+markDelete(label)
+\end{lstlisting}
+
+The public method first locks operations for that external label:
+
+\begin{lstlisting}
+std::unique_lock<std::mutex> lock_label(getLabelOpMutex(label));
+\end{lstlisting}
+
+Then it locks \lstinline|label_lookup_lock| long enough to translate the
+external label into an internal id:
+
+\begin{lstlisting}
+auto search = label_lookup_.find(label);
+tableint internalId = search->second;
+lock_table.unlock();
+\end{lstlisting}
+
+After that, \lstinline|markDeletedInternal(internalId)| sets the deletion bit:
+
+\begin{lstlisting}
+unsigned char *ll_cur = ((unsigned char *)get_linklist0(internalId)) + 2;
+*ll_cur |= DELETE_MARK;
+num_deleted_ += 1;
+\end{lstlisting}
+
+The deletion mark is stored inside the level-0 link-list header, not in a
+separate node object.  This is why deletion is described as lazy: the node is
+not physically removed from the graph, and its neighbor links are not erased.
+Search can still traverse through the node, but it should not return the node
+as a result.
+
+If replacement is enabled, the internal id is inserted into
+\lstinline|deleted_elements|:
+
+\begin{lstlisting}
+if (allow_replace_deleted_) {
+    std::unique_lock<std::mutex> lock_deleted_elements(deleted_elements_lock);
+    deleted_elements.insert(internalId);
+}
+\end{lstlisting}
+
+Here \lstinline|deleted_elements_lock| protects the reusable-id set while the
+deleted node id is added.
+
+\subsection{When a Node Is Unmarked Deleted}
+
+A node is unmarked when the user calls:
+
+\begin{lstlisting}
+unmarkDelete(label)
+\end{lstlisting}
+
+The public path is similar to deletion: lock by label, find the internal id in
+\lstinline|label_lookup_|, then call \lstinline|unmarkDeletedInternal|.
+
+The internal method clears the deletion bit:
+
+\begin{lstlisting}
+unsigned char *ll_cur = ((unsigned char *)get_linklist0(internalId)) + 2;
+*ll_cur &= ~DELETE_MARK;
+num_deleted_ -= 1;
+\end{lstlisting}
+
+If replacement is enabled, the node must also be removed from the reusable
+deleted-id set:
+
+\begin{lstlisting}
+if (allow_replace_deleted_) {
+    std::unique_lock<std::mutex> lock_deleted_elements(deleted_elements_lock);
+    deleted_elements.erase(internalId);
+}
+\end{lstlisting}
+
+This lock prevents a race where one thread unmarks the node while another
+thread is trying to reuse it as a deleted slot.
+
+\subsection{Relationship Between Deletion, Un-Deletion, and Replacement}
+
+The three operations share the same state:
+
+\begin{itemize}[leftmargin=*]
+  \item the delete bit inside the node's level-0 link-list header,
+  \item \lstinline|num_deleted_|, which counts deleted nodes, and
+  \item \lstinline|deleted_elements|, which stores reusable internal ids when
+  replacement is enabled.
+\end{itemize}
+
+Marking deletion sets the bit and optionally inserts the internal id into
+\lstinline|deleted_elements|.  Unmarking deletion clears the bit and optionally
+erases the internal id from \lstinline|deleted_elements|.  Replacement
+insertion removes an id from \lstinline|deleted_elements|, assigns a new
+external label to that same internal id, clears the deletion mark, copies new
+vector bytes into the old node storage, and repairs local connections with
+\lstinline|updatePoint|.
+
+The locking relationship is therefore:
+
+\begin{itemize}[leftmargin=*]
+  \item label locks prevent conflicting operations on the same external label,
+  \item \lstinline|label_lookup_lock| protects label-to-internal-id lookup and
+  updates, and
+  \item \lstinline|deleted_elements_lock| protects the pool of deleted ids
+  that can be reused.
+\end{itemize}
+
+This is why \lstinline|lock_deleted_elements| is specifically required: the
+deleted-id pool is shared by delete, un-delete, and replacement insertion.
+
+\section{Threading and Locks}
+
+The implementation is CPU multithreaded at the Python batch level.  The
+binding uses \lstinline|ParallelFor| to distribute rows across threads for
+\lstinline|add_items| and \lstinline|knn_query|.  Inside the HNSW class,
+thread safety is handled with several lock groups:
+
+\begin{itemize}[leftmargin=*]
+  \item \lstinline|label_op_locks_|: striped locks for operations on external
+  labels.
+  \item \lstinline|label_lookup_lock|: protects the label-to-internal-id map.
+  \item \lstinline|link_list_locks_|: one mutex per internal node for link
+  list updates and reads during construction/update.
+  \item \lstinline|global|: protects global entry-point and maximum-level
+  changes during insertion.
+  \item \lstinline|deleted_elements_lock|: protects the reusable deleted-id
+  set.
+\end{itemize}
+
+The README states that \lstinline|add_items| is thread-safe with other
+\lstinline|add_items| calls, and \lstinline|knn_query| is thread-safe with
+other \lstinline|knn_query| calls.  However, \lstinline|add_items| and
+\lstinline|knn_query| are not advertised as thread-safe with each other.
+
+\section{Mechanism of the C++ Examples}
+
+This section explains the runnable C++ examples in \lstinline|examples/cpp|.
+All of these examples create synthetic random data, build an in-memory HNSW
+index, and then exercise a particular query or maintenance mode.  They are
+small demonstrations of the API rather than full benchmark programs.
+
+\subsection{Basic Search: example\_search.cpp}
+
+The basic search example demonstrates the normal HNSW build/query/save/load
+cycle.
+
+\begin{enumerate}[leftmargin=*]
+  \item It sets the dataset shape and construction parameters:
+  \lstinline|dim = 16|, \lstinline|max_elements = 10000|,
+  \lstinline|M = 16|, and \lstinline|ef_construction = 200|.
+  \item It creates an L2 distance space:
+  \lstinline|hnswlib::L2Space space(dim)|.
+  \item It creates the graph index:
+  \lstinline|HierarchicalNSW<float>(&space, max_elements, M, ef_construction)|.
+  \item It allocates one flat array,
+  \lstinline|float* data = new float[dim * max_elements]|.  The pointer
+  \lstinline|data| owns a contiguous block of all generated vectors.  Vector
+  \lstinline|i| begins at \lstinline|data + i * dim|.
+  \item It inserts every vector with
+  \lstinline|alg_hnsw->addPoint(data + i * dim, i)|.  The second argument
+  \lstinline|i| is the external label.
+  \item It queries each vector against the index with
+  \lstinline|searchKnn(data + i * dim, 1)|.  Because the query vector is one
+  of the stored vectors, the expected nearest label is \lstinline|i|.
+  \item It counts how often the returned top label equals the query label and
+  prints recall.
+  \item It saves the index with \lstinline|saveIndex("hnsw.bin")|, deletes the
+  old index object, reloads from the saved file, and repeats the recall check.
+\end{enumerate}
+
+Mechanically, \lstinline|searchKnn| first performs greedy descent through the
+upper HNSW layers and then performs a wider candidate search on layer 0.  The
+returned object is a \lstinline|std::priority_queue| of
+\lstinline|(distance, label)| pairs, where \lstinline|result.top()| is used to
+read the best label for \lstinline|k = 1|.
+
+\subsection{Filtered Search: example\_filter.cpp}
+
+The filter example demonstrates label-based filtering during search.  It
+defines:
+
+\begin{lstlisting}
+class PickDivisibleIds: public hnswlib::BaseFilterFunctor {
+    bool operator()(hnswlib::labeltype label_id) {
+        return label_id % divisor == 0;
+    }
+};
+\end{lstlisting}
+
+This class is a callable filter object.  For
+\lstinline|PickDivisibleIds pickIdsDivisibleByTwo(2)|, only even labels are
+allowed.
+
+The index construction is the same as the basic search example: random vectors
+are generated, copied into the HNSW index with \lstinline|addPoint|, and labels
+are assigned from 0 to \lstinline|max_elements - 1|.  The difference is the
+query call:
+
+\begin{lstlisting}
+searchKnnCloserFirst(data + i * dim, k, &pickIdsDivisibleByTwo)
+\end{lstlisting}
+
+The third argument is a pointer to the filter functor.  During base-layer
+search, hnswlib can still traverse graph nodes to preserve connectivity, but a
+candidate is only accepted into the returned result set if
+\lstinline|isIdAllowed(label)| returns true.  The example checks every returned
+label and prints an error if any odd label appears.
+
+\lstinline|searchKnnCloserFirst| is a convenience wrapper around
+\lstinline|searchKnn|.  It converts the priority-queue result into a vector
+ordered from closest to farthest, which is easier to inspect in a loop.
+
+\subsection{Multithreaded Search: example\_mt\_search.cpp}
+
+The multithreaded search example uses the same HNSW index type, but distributes
+insertion and querying across CPU threads.  The file defines a local
+\lstinline|ParallelFor| helper.
+
+The helper works as follows:
+
+\begin{itemize}[leftmargin=*]
+  \item If \lstinline|numThreads <= 0|, it uses
+  \lstinline|std::thread::hardware_concurrency()|.
+  \item If \lstinline|numThreads == 1|, it runs a normal serial loop.
+  \item Otherwise, it creates \lstinline|numThreads| worker threads.
+  \item The shared atomic counter \lstinline|current| hands out row ids using
+  \lstinline|current.fetch_add(1)|.
+  \item Each worker calls the supplied lambda for one row at a time.
+  \item Exceptions are captured in \lstinline|lastException| and rethrown after
+  all threads join.
+\end{itemize}
+
+Insertion is parallelized with:
+
+\begin{lstlisting}
+ParallelFor(0, max_elements, num_threads, [&](size_t row, size_t threadId) {
+    alg_hnsw->addPoint((void*)(data + dim * row), row);
+});
+\end{lstlisting}
+
+Here \lstinline|data + dim * row| is a pointer to the first float of the row's
+vector.  The cast to \lstinline|void*| matches the generic
+\lstinline|addPoint| API, which accepts raw vector bytes.  The graph object
+uses internal locks to make concurrent insertions safe with other insertions.
+
+Querying is also parallelized.  Each thread calls
+\lstinline|searchKnn(data + dim * row, 1)| for a different row and writes the
+returned label into \lstinline|neighbors[row]|.  After all threads finish, the
+main thread computes recall by comparing \lstinline|neighbors[i]| with
+\lstinline|i|.
+
+This example should be read as ``parallel batch insert, then parallel batch
+query.''  It does not mix insertion and query at the same time.
+
+\subsection{Multithreaded Filtered Search: example\_mt\_filter.cpp}
+
+The multithreaded filtered example combines the two previous mechanisms:
+
+\begin{itemize}[leftmargin=*]
+  \item It uses the same \lstinline|ParallelFor| worker-thread helper as
+  \lstinline|example_mt_search.cpp|.
+  \item It uses the same \lstinline|PickDivisibleIds| filter class as
+  \lstinline|example_filter.cpp|.
+  \item It inserts all vectors in parallel.
+  \item It searches all vectors in parallel with a filter pointer.
+\end{itemize}
+
+The query call is:
+
+\begin{lstlisting}
+searchKnn(data + dim * row, k, &pickIdsDivisibleByTwo)
+\end{lstlisting}
+
+The output of \lstinline|searchKnn| is a priority queue, so the example pops
+\lstinline|k| labels from the queue and stores them into a flat result vector:
+
+\begin{lstlisting}
+neighbors[row * k + i] = label;
+\end{lstlisting}
+
+This memory layout means query row \lstinline|row| owns the result segment
+\lstinline|neighbors[row * k]| through
+\lstinline|neighbors[row * k + k - 1]|.  After the parallel query phase, the
+main thread scans all stored labels and reports an error if a returned label is
+not divisible by two.
+
+Filtering generally makes search slower than the bare query path because the
+implementation cannot use the simplest no-deletion/no-filter template branch.
+It must check whether each candidate label is allowed before accepting it into
+the result heap.
+
+\subsection{Epsilon Search: example\_epsilon\_search.cpp}
+
+The epsilon search example demonstrates a custom stop condition rather than a
+fixed \lstinline|k|-nearest-neighbor query.  It uses:
+
+\begin{lstlisting}
+hnswlib::EpsilonSearchStopCondition<dist_t>
+    stop_condition(epsilon2, min_num_candidates, max_elements);
+
+alg_hnsw->searchStopConditionClosest(query_data, stop_condition);
+\end{lstlisting}
+
+The example stores data in a raw byte array:
+
+\begin{lstlisting}
+size_t data_point_size = space.get_data_size();
+char* data = new char[data_point_size * max_elements];
+\end{lstlisting}
+
+The pointer \lstinline|data| owns all vector records as bytes.  For vector
+\lstinline|i|, \lstinline|point_data = data + i * data_point_size| points to
+the start of that record.  Each coordinate is written by computing a byte
+offset, casting the address to \lstinline|float*|, and assigning a float value:
+
+\begin{lstlisting}
+char* vec_data = point_data + j * sizeof(float);
+*(float*)vec_data = value;
+\end{lstlisting}
+
+\lstinline|epsilon2| is the maximum squared L2 distance for final results.
+\lstinline|min_num_candidates| forces the search to inspect at least a minimum
+number of candidates before stopping just because the next candidate is outside
+the epsilon radius.  \lstinline|max_elements| is passed as the maximum number
+of candidates, so this example allows the stop condition to return as many
+matching vectors as needed up to the dataset size.
+
+Inside \lstinline|EpsilonSearchStopCondition|, search can stop when either:
+
+\begin{itemize}[leftmargin=*]
+  \item the candidate distance is worse than the current lower bound and the
+  maximum candidate count has been reached, or
+  \item the candidate distance is larger than \lstinline|epsilon2| and at
+  least \lstinline|min_num_candidates| have already been collected.
+\end{itemize}
+
+After the graph search finishes, \lstinline|filter_results| removes candidates
+whose distance is greater than \lstinline|epsilon2|.  The example prints how
+many vectors were found for each random query.
+
+\subsection{Multivector Search: example\_multivector\_search.cpp}
+
+The multivector example demonstrates searching for documents where each
+document may be represented by multiple vectors.  The key difference is the
+space type:
+
+\begin{lstlisting}
+hnswlib::MultiVectorL2Space<docidtype> space(dim);
+\end{lstlisting}
+
+This space stores a normal float vector plus an extra document id field at the
+end of each data record.  Therefore:
+
+\begin{lstlisting}
+data_point_size = dim * sizeof(float) + sizeof(docidtype)
+\end{lstlisting}
+
+conceptually, although the code obtains this value through
+\lstinline|space.get_data_size()|.  A point record looks like:
+
+\begin{lstlisting}
+[ float vector coordinates ][ doc_id ]
+\end{lstlisting}
+
+The example writes the vector coordinates manually into a raw
+\lstinline|char*| buffer and then calls:
+
+\begin{lstlisting}
+space.set_doc_id(point_data, doc_id);
+\end{lstlisting}
+
+\lstinline|set_doc_id| writes the document id at byte offset
+\lstinline|vector_size_|, immediately after the vector coordinates.  During
+index construction, each vector still receives its own HNSW label, and the
+example keeps a separate \lstinline|label_docid_lookup| map so it can count
+which returned labels belong to which documents.
+
+The query mechanism uses:
+
+\begin{lstlisting}
+hnswlib::MultiVectorSearchStopCondition<docidtype, dist_t>
+    stop_condition(space, num_docs, ef_collection);
+
+alg_hnsw->searchStopConditionClosest(query_data, stop_condition);
+\end{lstlisting}
+
+\lstinline|num_docs| is the target number of distinct documents to return.
+\lstinline|ef_collection| is the number of distinct candidate documents to
+maintain during search; larger values usually improve recall but slow the
+search.  The stop condition counts documents, not just individual vectors.  It
+uses the space object to read each candidate vector's stored document id from
+the point bytes.  It can stop once the next candidate cannot improve the result
+and \lstinline|ef_collection| distinct documents have already been collected.
+
+After the result vectors are returned, the example maps each returned label
+back to a document id and prints both the number of distinct documents found
+and the number of vectors returned.
+
+\section{Summary}
+
+In this repository, HNSW is implemented as a CPU-resident, pointer-based,
+header-only C++ graph index.  It stores every inserted vector inside the index
+memory, stores level-0 graph links beside the vector and label in a contiguous
+per-node record, stores upper-layer links in per-node heap allocations, and
+uses dense internal ids for graph edges.  Public labels are maintained through
+an unordered map and are what the user sees in query results.  Construction is
+controlled mainly by \lstinline|M| and \lstinline|ef_construction|, while query
+accuracy and speed are controlled mainly by \lstinline|ef| and \lstinline|k|.
+
+\end{document}

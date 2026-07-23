@@ -1,5 +1,5 @@
 #include "../../hnswlib/hnswlib.h"
-
+#include <iostream>
 
 int main() {
     int dim = 16;               // Dimension of the elements
@@ -8,10 +8,19 @@ int main() {
                                 // strongly affects the memory consumption
     int ef_construction = 200;  // Controls index search speed/build speed tradeoff
 
+    std::cout << "[EXAMPLE SEARCH] Initiating L2 Space: " << std::endl;
     // Initing index
     hnswlib::L2Space space(dim);
+    std::cout << "[EXAMPLE SEARCH] Initiating HNSW Graph: " << std::endl;
     hnswlib::HierarchicalNSW<float>* alg_hnsw = new hnswlib::HierarchicalNSW<float>(&space, max_elements, M, ef_construction);
 
+    std::cout << "[EXAMPLE SEARCH] Random data generation: \n" 
+        << "Dimension: "<< dim << "\n"
+        << "max_elements: "<< max_elements << "\n"
+        << "M: "<< M << "\n"
+        << "ef_construction: "<< ef_construction << "\n"
+        << std::endl;
+    std::cout << "[EXAMPLE SEARCH] Gnerating Random data: " << std::endl;
     // Generate random data
     std::mt19937 rng;
     rng.seed(47);
@@ -21,11 +30,13 @@ int main() {
         data[i] = distrib_real(rng);
     }
 
+    std::cout << "[EXAMPLE SEARCH] Adding data to Index: " << std::endl;
     // Add data to index
     for (int i = 0; i < max_elements; i++) {
         alg_hnsw->addPoint(data + i * dim, i);
     }
 
+    std::cout << "[EXAMPLE SEARCH] Query the elements for themselves and measure recall: " << std::endl;
     // Query the elements for themselves and measure recall
     float correct = 0;
     for (int i = 0; i < max_elements; i++) {
@@ -33,6 +44,8 @@ int main() {
         hnswlib::labeltype label = result.top().second;
         if (label == i) correct++;
     }
+    
+    std::cout << "[EXAMPLE SEARCH] Correct: " << correct << std::endl;
     float recall = correct / max_elements;
     std::cout << "Recall: " << recall << "\n";
 

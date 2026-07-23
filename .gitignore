@@ -11,3 +11,7 @@ var/
 .vs/
 **.DS_Store
 *.pyc
+hnsw.bin
+hnsw_index.bin
+logs
+build_cpp/
