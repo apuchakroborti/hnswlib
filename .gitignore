@@ -15,3 +15,8 @@ hnsw.bin
 hnsw_index.bin
 logs
 build_cpp/
+latex_notes
+examples/cpp/build
+build_cprq_compressed
+hnsw_qlrpcomp/hnsw.bin
+build_lib_only

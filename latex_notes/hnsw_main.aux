@@ -16,46 +16,120 @@
 \gdef\HyperFirstAtBeginDocument#1{#1}
 \providecommand\HyField@AuxAddToFields[1]{}
 \providecommand\HyField@AuxAddToCoFields[2]{}
-\@writefile{toc}{\contentsline {section}{\numberline {1}Where the Main Implementation Lives}{3}{section.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {2}CPU or GPU}{3}{section.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {3}Public Construction and Query Parameters}{3}{section.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {4}Distance Spaces and Input Vector Format}{4}{section.4}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {5}Internal Node Identifiers and Labels}{4}{section.5}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {6}Level Assignment and Entry Point}{5}{section.6}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {7}Memory Layout of Node Data}{5}{section.7}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {8}How Link Lists Are Stored}{6}{section.8}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {9}Graph Construction Path}{6}{section.9}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {10}Neighbor Selection and Reciprocal Updates}{7}{section.10}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {11}Detailed Control Flow of addPoint}{7}{section.11}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {11.1}Clarifications About Nodes, Layers, Edges, Memory Access, and Deletion}{8}{subsection.11.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {11.2}Public Wrapper: Replacement Policy}{9}{subsection.11.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {11.3}Replacement Path for Deleted Elements}{9}{subsection.11.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {11.4}Internal Overload: New Insert or Existing-Label Update}{10}{subsection.11.4}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {11.5}Level Selection and Locking}{11}{subsection.11.5}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {11.6}Writing the Node's Stored Data}{11}{subsection.11.6}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {11.7}First-Node Case}{12}{subsection.11.7}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {11.8}Greedy Descent from Upper Layers}{12}{subsection.11.8}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {11.9}Construction Search and Mutual Connection}{13}{subsection.11.9}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {11.10}Entry Point Update}{13}{subsection.11.10}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {11.11}Clarification: Difference Between addPoint and updatePoint}{13}{subsection.11.11}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {11.12}Short Logical Summary}{14}{subsection.11.12}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {12}Query Path}{15}{section.12}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {13}Original Data Handling}{15}{section.13}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {14}Index Save File and Load File Format}{16}{section.14}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {15}Deletion and Replacement}{17}{section.15}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {16}Locking Mechanism During Construction and Deletion}{17}{section.16}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {16.1}Why Locks Are Required During HNSW Graph Construction}{17}{subsection.16.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {16.2}Meaning of lock\_deleted\_elements}{18}{subsection.16.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {16.3}When a Node Is Marked Deleted}{18}{subsection.16.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {16.4}When a Node Is Unmarked Deleted}{19}{subsection.16.4}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {16.5}Relationship Between Deletion, Un-Deletion, and Replacement}{19}{subsection.16.5}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {17}Threading and Locks}{20}{section.17}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {18}Mechanism of the C++ Examples}{20}{section.18}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {18.1}Basic Search: example\_search.cpp}{20}{subsection.18.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {18.2}Filtered Search: example\_filter.cpp}{21}{subsection.18.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {18.3}Multithreaded Search: example\_mt\_search.cpp}{21}{subsection.18.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {18.4}Multithreaded Filtered Search: example\_mt\_filter.cpp}{22}{subsection.18.4}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {18.5}Epsilon Search: example\_epsilon\_search.cpp}{22}{subsection.18.5}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {18.6}Multivector Search: example\_multivector\_search.cpp}{23}{subsection.18.6}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {19}Summary}{24}{section.19}\protected@file@percent }
-\gdef \@abspage@last{24}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Where the Main Implementation Lives}{5}{section.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {2}CPU or GPU}{6}{section.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3}Public Construction and Query Parameters}{7}{section.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4}Distance Spaces and Input Vector Format}{8}{section.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5}Internal Node Identifiers and Labels}{9}{section.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {6}Level Assignment and Entry Point}{10}{section.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {7}Memory Layout of Node Data}{11}{section.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {8}How Link Lists Are Stored}{12}{section.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {9}Graph Construction Path}{13}{section.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {10}Neighbor Selection and Reciprocal Updates}{14}{section.10}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {11}Detailed Control Flow of addPoint}{15}{section.11}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {11.1}Clarifications About Nodes, Layers, Edges, Memory Access, and Deletion}{15}{subsection.11.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {11.2}Public Wrapper: Replacement Policy}{16}{subsection.11.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {11.3}Replacement Path for Deleted Elements}{17}{subsection.11.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {11.4}Internal Overload: New Insert or Existing-Label Update}{17}{subsection.11.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {11.5}Level Selection and Locking}{18}{subsection.11.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {11.6}Writing the Node's Stored Data}{19}{subsection.11.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {11.7}First-Node Case}{19}{subsection.11.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {11.8}Greedy Descent from Upper Layers}{19}{subsection.11.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {11.9}Construction Search and Mutual Connection}{20}{subsection.11.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {11.10}Entry Point Update}{20}{subsection.11.10}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {11.11}Clarification: Difference Between addPoint and updatePoint}{21}{subsection.11.11}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {11.12}Short Logical Summary}{22}{subsection.11.12}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {12}Query Path}{23}{section.12}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {13}Original Data Handling}{24}{section.13}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {14}Index Save File and Load File Format}{25}{section.14}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {15}Deletion and Replacement}{26}{section.15}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {16}Locking Mechanism During Construction and Deletion}{27}{section.16}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {16.1}Why Locks Are Required During HNSW Graph Construction}{27}{subsection.16.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {16.2}Meaning of lock\_deleted\_elements}{27}{subsection.16.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {16.3}When a Node Is Marked Deleted}{28}{subsection.16.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {16.4}When a Node Is Unmarked Deleted}{28}{subsection.16.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {16.5}Relationship Between Deletion, Un-Deletion, and Replacement}{29}{subsection.16.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {17}Threading and Locks}{30}{section.17}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {18}Mechanism of the C++ Examples}{31}{section.18}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {18.1}Basic Search: example\_search.cpp}{31}{subsection.18.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {18.2}Filtered Search: example\_filter.cpp}{31}{subsection.18.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {18.3}Multithreaded Search: example\_mt\_search.cpp}{32}{subsection.18.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {18.4}Multithreaded Filtered Search: example\_mt\_filter.cpp}{32}{subsection.18.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {18.5}Epsilon Search: example\_epsilon\_search.cpp}{33}{subsection.18.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {18.6}Multivector Search: example\_multivector\_search.cpp}{34}{subsection.18.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {19}Distance-Space Implementation: space\_ip.h and space\_l2.h}{35}{section.19}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {19.1}Mechanism of space\_ip.h}{35}{subsection.19.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {19.2}Mechanism of space\_l2.h}{36}{subsection.19.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {19.3}How the Distance Space Is Used by HNSW}{37}{subsection.19.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {19.4}Controlling SSE, AVX, and AVX-512}{38}{subsection.19.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {19.4.1}Summary for the Current Machine}{38}{subsubsection.19.4.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {20}Constructing HNSW from the Compressed CPRQ Package Without Full Decompression}{40}{section.20}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {20.1}What the Package Actually Stores}{40}{subsection.20.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {20.2}Reconstruction Model and Exact L2 Distance}{40}{subsection.20.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {20.3}Residual Random Access Is a Required Index}{41}{subsection.20.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {20.4}Why Stock L2Space Cannot Store the Compressed Rows}{42}{subsection.20.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {20.5}Option 1: Stream One Reconstructed Row into Ordinary HNSW}{42}{subsection.20.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {20.6}Option 2: Store Row Descriptors and Decode Distances on Demand}{43}{subsection.20.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {20.7}Option 3: Build HNSW on Compact Surrogate Codes and Rerank}{44}{subsection.20.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {20.8}Option 4: Block-Level Graph or Two-Level Index}{45}{subsection.20.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {20.9}Exact, Fast, and Corrected Compressed Distances}{46}{subsection.20.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {20.10}Can SIMD Be Used?}{46}{subsection.20.10}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {20.11}Why a Per-Distance GPU Call Is Not Appropriate}{47}{subsection.20.11}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {20.12}Caching and Multithreading Considerations}{48}{subsection.20.12}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {20.13}Persistence and Validation Requirements}{48}{subsection.20.13}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {20.14}Recommended Development Sequence}{49}{subsection.20.14}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {20.15}Overall Recommendation}{49}{subsection.20.15}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {21}Proposed HNSW Nodes with Row-Wise Signed Residual Bins, Alpha, and Beta}{51}{section.21}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {21.1}Restatement of the Compressed Model}{51}{subsection.21.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {21.2}From Dimension-Major Blocks to Row-Major Node Codes}{52}{subsection.21.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {21.3}Selecting Signed 8-Bit or Signed 16-Bit Storage}{52}{subsection.21.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {21.4}Global State and Per-Node State}{53}{subsection.21.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {21.5}Beta Computed by the Existing CUDA Method}{53}{subsection.21.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {21.6}Database-to-Database Distance Derivation}{54}{subsection.21.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {21.7}Relation to the Current Corrected CUDA Distance}{54}{subsection.21.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {21.8}Recommended Exact QR Reparameterization}{55}{subsection.21.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {21.9}Query-to-Node Distance}{55}{subsection.21.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {21.10}Required Change: Keep Every Query in Full Precision}{56}{subsection.21.10}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {21.11}Minimal-Change Integration Without Modifying hnswalg.h}{56}{subsection.21.11}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {21.12}Full-Precision Query Preparation and Distance}{57}{subsection.21.12}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {21.13}Lifetime and Multithreaded Query Rules}{58}{subsection.21.13}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {21.14}Full-Precision Query Pseudocode with Minimal Changes}{58}{subsection.21.14}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {21.15}SIMD with a Full-Precision Query}{59}{subsection.21.15}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {21.16}Per-Query Signed-Bin Distance Lookup Tables}{59}{subsection.21.16}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {21.16.1}Alignment and Mixed FP32/Integer Types}{59}{subsubsection.21.16.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {21.16.2}Full Per-Query Table Size}{60}{subsubsection.21.16.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {21.16.3}Multiple Dimension-Wise Positive and Negative Tables}{60}{subsubsection.21.16.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {21.16.4}Why the Access Pattern Can Still Be Slow}{63}{subsubsection.21.16.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {21.16.5}Pros of the Lookup-Table Design}{63}{subsubsection.21.16.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {21.16.6}Cons of the Lookup-Table Design}{64}{subsubsection.21.16.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {21.16.7}Lower-Memory Algebraic Alternative}{64}{subsubsection.21.16.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {21.16.8}Tiled and Hybrid Lookup Alternatives}{64}{subsubsection.21.16.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {21.16.9}Recommendation}{65}{subsubsection.21.16.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {21.17}Optional Cleaner API Change}{65}{subsection.21.17}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {21.18}Compatibility with the hnswlib Distance Interface}{65}{subsection.21.18}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {21.19}Proposed Data-Preparation Algorithm}{66}{subsection.21.19}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {21.20}Proposed HNSW Construction Algorithm}{66}{subsection.21.20}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {21.21}Proposed HNSW Query Algorithm}{67}{subsection.21.21}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {21.22}SIMD Implementation Opportunities}{67}{subsection.21.22}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {21.23}Memory Consequences for D=3584 and R=64}{68}{subsection.21.23}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {21.24}KMeans and Cluster-Centered Models}{68}{subsection.21.24}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {21.25}Feasibility Verdict}{69}{subsection.21.25}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {21.26}Required Correctness Checks Before Code Generation}{70}{subsection.21.26}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {21.27}Recommended Design Decision}{70}{subsection.21.27}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {22}Implemented CPU CPRQ HNSW Construction and Full-Precision Search}{71}{section.22}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {22.1}Package Input and Outer Zstd Handling}{71}{subsection.22.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {22.2}Raw Full-Package Parsing}{71}{subsection.22.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {22.3}Actual Block-Mask Residual Layout}{72}{subsection.22.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {22.4}Signed Int8 Conversion and Clipping}{73}{subsection.22.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {22.5}QR Transformation of Alpha and Beta}{73}{subsection.22.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {22.6}Fixed HNSW Node Payload}{74}{subsection.22.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {22.7}Exact Node-to-Node Construction Distance}{74}{subsection.22.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {22.8}Final HNSW Construction Algorithm}{74}{subsection.22.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {22.8.1}Summary: Why the CPU Applies QR but the GPU Does Not}{75}{subsubsection.22.8.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {22.9}Full-Precision Query Preparation}{76}{subsection.22.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {22.10}Exact Query-to-Node Distance Without a Cache Table}{77}{subsection.22.10}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {22.11}Final SearchKNN Algorithm}{77}{subsection.22.11}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {22.12}Measured Validation Results}{78}{subsection.22.12}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {22.13}Build and Run Location}{78}{subsection.22.13}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {23}Summary}{79}{section.23}\protected@file@percent }
+\gdef \@abspage@last{79}

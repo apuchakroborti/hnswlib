@@ -27,7 +27,6 @@ EXTERNAL_README.md        This file
 The C++ examples are built by CMake when `HNSWLIB_EXAMPLES=ON`.
 
 ## 2. Build Requirements
-
 You need:
 
 ```text
@@ -76,12 +75,45 @@ cmake --build build_lib_only -j8
 ```
 
 ## 4. Run the C++ Examples
-
 Create the logging directory first:
 
 ```bash
 mkdir -p logs
 ```
+
+## 4.1 Build and Run Examples
+
+```bash
+# Build
+cd /home/achakroborti1/data-compressors/EmbdC/cuda_cprq_imprv/hnswlib
+
+g++ -O3 -std=c++11 -march=native -I. \
+  examples/cpp/example_search_w_data_source.cpp \
+  -o examples/cpp/build/example_search_w_data_source
+
+# Run error bound: 0905
+examples/cpp/build/example_search_w_data_source \
+  16 \
+  200 \
+  '/tmp/qlrpcomp_gpu_pool_kmeans_model_components_r64_qb_8_abs0905_decompressed/embeds_0[(16,20,36,3584)].fvecs' \
+  'hnsw.bin' \
+  > ./logs/example_search_w_data_source_M_16_ef_c_200_k_1.log
+
+# Run error bound: 0.905
+examples/cpp/build/example_search_w_data_source \
+  16 \
+  200 \
+  '/tmp/qlrpcomp_gpu_pool_mean_rSVD_model_components_r64_qb_8_abs0905_decompressed/embeds_0[(16,20,36,3584)].fvecs' \
+  'hnsw.bin' \
+  > ./logs/example_search_w_data_source_M_16_ef_c_200_k_1.log
+
+```
+
+The arguments are `M`, `ef_construction`, `data_fvecs`, and optional
+`index_output`. If the final argument is omitted, `hnsw.bin` is saved relative
+to the current working directory. When run from `cuda_cprq_imprv/hnswlib`,
+that is `cuda_cprq_imprv/hnswlib/hnsw.bin`. The program prints the index size
+in bytes, decimal megabytes, and decimal gigabytes after saving it.
 
 Run the basic single-threaded search example:
 
